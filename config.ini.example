@@ -1,0 +1,22 @@
+[LM]
+# Para modelos en la nube (descomenta las siguientes líneas)
+#base_url = https://openrouter.ai/api/v1
+#api_key = tu_api_key_aqui
+#model = deepseek/deepseek-chat
+
+# Para modelos locales con Ollama (configuración por defecto)
+base_url = http://localhost:11434/v1
+model = tu_modelo_local
+
+[VOICE]
+voice = hf_beta
+
+[TWITCH_COMMENTARIST_CONFIG]
+access_token = oauth:tu_token_de_twitch
+client_secret = tu_client_secret_de_twitch
+prefix = !
+channel_name = tu_canal_de_twitch
+personalities_path = ruta/a/directorio/personalidades
+personality_name = nombre_personalidad
+summarization_frequency = 10
+auto_save = true 
