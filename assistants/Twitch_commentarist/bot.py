@@ -58,7 +58,7 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
                          initial_channels=[account_fields["channel_name"]],
                          client_secret=account_fields["client_secret"])
         # Initialize Kokoro
-        Kokoro.__init__(self, voice=config["VOICE"]["voice"])
+        Kokoro.__init__(self, language=config["VOICE"]["language"], voice=config["VOICE"]["voice"])
         
         # Inicializar variables para la ventana
         self.window_name = "AI Assistant"

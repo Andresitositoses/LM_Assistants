@@ -9,7 +9,15 @@ base_url = http://localhost:11434/v1
 model = tu_modelo_local
 
 [VOICE]
+# Configuración de voz para español
 voice = hf_beta
+language = spanish
+
+# Otras opciones disponibles:
+# Para inglés: voice = bf_emma, language = english
+# Para francés: language = french
+# Para italiano: language = italian
+# Para japonés: language = japanese
 
 [TWITCH_COMMENTARIST_CONFIG]
 access_token = oauth:tu_token_de_twitch

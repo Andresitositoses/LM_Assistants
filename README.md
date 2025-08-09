@@ -20,7 +20,13 @@ Este proyecto se centra en el desarrollo de un **asistente de IA modular** imple
 ### Texto a Voz
 - Ejecutada con CUDA en `components/kokoro/`
 - Síntesis de voz en tiempo real con modelo Kokoro-82M
-- Soporte multiidioma (español, inglés, francés, italiano, etc.)
+- Soporte multiidioma configurable:
+  - **Español** (voice = hf_beta)
+  - **Inglés** (voice = bf_emma)
+  - **Francés** (language = french)
+  - **Italiano** (language = italian)
+  - **Japonés** (language = japanese)
+- Configuración de idioma y voz en la sección `[VOICE]` del archivo `config.ini`
 
 ### Integración con Twitch
 - Bot receptor de mensajes implementado en `assistants/Twitch_commentarist/bot.py`
@@ -36,7 +42,10 @@ Este proyecto se centra en el desarrollo de un **asistente de IA modular** imple
 1. **Copia el archivo de configuración**: `cp config.ini.example config.ini`
 2. **Edita `config.ini`** con tus credenciales reales
 3. **Configura tu modelo de IA** (local con Ollama o en la nube)
-4. **Añade tus credenciales de Twitch** si usas el bot comentarista
+4. **Configura la síntesis de voz** en la sección `[VOICE]`:
+   - `voice`: Selecciona la voz específica (hf_beta para español, bf_emma para inglés)
+   - `language`: Define el idioma (spanish, english, french, italian, japanese)
+5. **Añade tus credenciales de Twitch** si usas el bot comentarista
 
 ## Modos de Funcionamiento
 
