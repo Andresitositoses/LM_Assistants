@@ -40,8 +40,8 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         model = lm_config["model"]
         
         # Initialize AI Assistant
-        AI_Assistant.__init__(self, initial_prompt='''
-        Tu propósito es responder a los comentarios de un directo de Twitch en español de España.
+        AI_Assistant.__init__(self, initial_prompt=f'''
+        Tu nombre es {account_fields["personality_name"]} y tu propósito es responder a los comentarios de un directo de Twitch en español de España.
         Lo harás de manera humorística y con un tono sarcástico. Importante: no escribir NUNCA emotes ni caras.
         Por supuesto, deberás saludar a aquellos usuarios que se vayan incorporando y comentando por primera vez.
         Tus respuestas no deben ser extensas.
