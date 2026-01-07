@@ -1,4 +1,4 @@
-import assistants.Twitch_commentarist.bot as ai
+import assistants.Twitch_commentarist.twitch_bot as ai
 
 bot = ai.TwitchCommentarist()
 bot.run()
