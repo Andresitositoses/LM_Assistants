@@ -59,7 +59,9 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         auto_save=account_fields["auto_save"],
         lm_params=(base_url, api_key, model, is_local),
         include_ai_in_history=True,
-        memories_manager=self.memories_manager)
+        memories_manager=self.memories_manager,
+        mode="chat",
+        leader_name=account_fields["channel_name"])
         # Initialize Twitch bot
         commands.Bot.__init__(self, token=account_fields["access_token"],
                          prefix=account_fields["prefix"],
@@ -160,14 +162,17 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
                 print("Resumen manual forzado por el líder.")
                 return
 
-            response = self.send_message(f"{message.author.name}: {message.content}")
+            response = self.send_message(message.content, author=message.author.name, timestamp=message.timestamp)
             print(f"IA: {response}")
             
             # Activar visualización de imagen durante el audio
-            audio_arrays, duration_seconds = self.generate_audio(response)
-            self.audio_to_reproduce = (True, duration_seconds)
-            self.reproduce_audio(audio_arrays)
-            self.audio_to_reproduce = (False, -1)
+            # Eliminar contenido entre asteriscos para el audio (acciones/gestos)
+            clean_response = re.sub(r'\*.*?\*', '', response).strip()
+            if clean_response:
+                audio_arrays, duration_seconds = self.generate_audio(clean_response)
+                self.audio_to_reproduce = (True, duration_seconds)
+                self.reproduce_audio(audio_arrays)
+                self.audio_to_reproduce = (False, -1)
             
         except:
             pass
