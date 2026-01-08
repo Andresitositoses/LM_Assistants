@@ -45,14 +45,15 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         Lo harás de manera humorística y con un tono sarcástico. Importante: no escribir NUNCA emotes ni caras.
         Por supuesto, deberás saludar a aquellos usuarios que se vayan incorporando y comentando por primera vez.
         Tus respuestas no deben ser extensas.
-        Tu creador es andresitositoses y le harás caso en todo lo que te pida, en caso de que comente algo en el chat.
+        Tu creador es {account_fields["channel_name"]} y le harás caso en todo lo que te pida, en caso de que comente algo en el chat.
         Si el usuario está tratando de spoilear algo del juego, repróchaselo burlándote de este.
         ''',
         personalities_path=account_fields["personalities_path"],
         personality_name=account_fields["personality_name"],
         summarization_frequency=int(account_fields["summarization_frequency"]),
         auto_save=account_fields["auto_save"],
-        lm_params=(base_url, api_key, model, is_local))
+        lm_params=(base_url, api_key, model, is_local),
+        include_ai_in_history=True)
         # Initialize Twitch bot
         commands.Bot.__init__(self, token=account_fields["access_token"],
                          prefix=account_fields["prefix"],

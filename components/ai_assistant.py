@@ -6,7 +6,7 @@ class AI_Assistant():
 
     FIELDS_SEPARATOR = "|/="
 
-    def __init__(self, initial_prompt: str, personalities_path: str, personality_name: str, summarization_frequency: int, auto_save: bool, lm_params: tuple):
+    def __init__(self, initial_prompt: str, personalities_path: str, personality_name: str, summarization_frequency: int, auto_save: bool, lm_params: tuple, include_ai_in_history: bool = False):
         '''
         initial_prompt: str -> Prompt inicial para el asistente
         personalities_path: str -> Ruta a la carpeta de personalidades
@@ -14,6 +14,7 @@ class AI_Assistant():
         summarization_frequency: int -> Frecuencia de resumen (en conversaciones). < 0 -> No se realiza ningún resumen.
         auto_save: bool -> Si se debe guardar el estado del asistente en un archivo de texto.
         lm_params: tuple -> (base_url, api_key, model, is_local) - Parámetros del modelo de lenguaje
+        include_ai_in_history: bool -> Si se deben incluir las respuestas de la IA en el historial de conversación (por defecto False)
         '''
 
         # Extraer parámetros de la tupla
@@ -44,6 +45,7 @@ class AI_Assistant():
         self.summarization_frequency = summarization_frequency
         self.summarization_counter = 0
         self.auto_save = auto_save
+        self.include_ai_in_history = include_ai_in_history
         
         # Configurar el directorio de personalidades
         self.personalities_path = personalities_path
@@ -79,7 +81,8 @@ class AI_Assistant():
             )
             ai_response = completion.choices[0].message.content
 
-            self.conversation_history.append({"role": "assistant", "content": ai_response})
+            if self.include_ai_in_history:
+                self.conversation_history.append({"role": "assistant", "content": ai_response})
 
             if self.summarization_frequency > 0 and self.summarization_counter >= self.summarization_frequency:
                 print("Performing summarization...")
