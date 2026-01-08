@@ -15,6 +15,8 @@ import numpy as np
 import os
 import random
 from threading import Thread
+# Memories Manager
+from assistants.Twitch_commentarist.memories_manager import MemoriesManager
 
 # Get bot.py's father path
 path = pathlib.Path(__file__).parent.resolve().__str__()
@@ -39,6 +41,9 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
             is_local = True
         model = lm_config["model"]
         
+        # Initialize Memories Manager
+        self.memories_manager = MemoriesManager()
+        
         # Initialize AI Assistant
         AI_Assistant.__init__(self, initial_prompt=f'''
         Tu nombre es {account_fields["personality_name"]} y tu propósito es responder a los comentarios de un directo de Twitch en español de España.
@@ -53,7 +58,8 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         summarization_frequency=int(account_fields["summarization_frequency"]),
         auto_save=account_fields["auto_save"],
         lm_params=(base_url, api_key, model, is_local),
-        include_ai_in_history=True)
+        include_ai_in_history=True,
+        memories_manager=self.memories_manager)
         # Initialize Twitch bot
         commands.Bot.__init__(self, token=account_fields["access_token"],
                          prefix=account_fields["prefix"],
@@ -147,6 +153,13 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         'Display messages on console'
         try:
             print(f"{message.author.name}: {message.content}")
+
+            # Si el usuario líder escribe "r", forzar resumen
+            if message.author and message.author.name.lower() == account_fields["channel_name"].lower() and message.content.strip() == "r":
+                self.force_summarization()
+                print("Resumen manual forzado por el líder.")
+                return
+
             response = self.send_message(f"{message.author.name}: {message.content}")
             print(f"IA: {response}")
             

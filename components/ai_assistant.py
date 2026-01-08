@@ -6,7 +6,7 @@ class AI_Assistant():
 
     FIELDS_SEPARATOR = "|/="
 
-    def __init__(self, initial_prompt: str, personalities_path: str, personality_name: str, summarization_frequency: int, auto_save: bool, lm_params: tuple, include_ai_in_history: bool = False):
+    def __init__(self, initial_prompt: str, personalities_path: str, personality_name: str, summarization_frequency: int, auto_save: bool, lm_params: tuple, include_ai_in_history: bool = False, memories_manager=None):
         '''
         initial_prompt: str -> Prompt inicial para el asistente
         personalities_path: str -> Ruta a la carpeta de personalidades
@@ -15,6 +15,7 @@ class AI_Assistant():
         auto_save: bool -> Si se debe guardar el estado del asistente en un archivo de texto.
         lm_params: tuple -> (base_url, api_key, model, is_local) - Parámetros del modelo de lenguaje
         include_ai_in_history: bool -> Si se deben incluir las respuestas de la IA en el historial de conversación (por defecto False)
+        memories_manager: MemoriesManager -> Instancia de MemoriesManager para gestionar personalidades en MongoDB (opcional)
         '''
 
         # Extraer parámetros de la tupla
@@ -46,6 +47,7 @@ class AI_Assistant():
         self.summarization_counter = 0
         self.auto_save = auto_save
         self.include_ai_in_history = include_ai_in_history
+        self.memories_manager = memories_manager
         
         # Configurar el directorio de personalidades
         self.personalities_path = personalities_path
@@ -54,8 +56,8 @@ class AI_Assistant():
         self.conversation_history = []
         if self.has_status():
             self.load_status()
-        else:
-            self.conversation_history.append({"role": "system", "content": self.initial_prompt})
+        # No añadimos el initial_prompt aquí porque send_message lo añade 
+        # dinámicamente al principio de cada consulta al modelo.
         
     def validate_LM_params(self, base_url, api_key, model, is_local):
         """Valida los parámetros de configuración del modelo de lenguaje"""
@@ -75,9 +77,25 @@ class AI_Assistant():
 
         self.conversation_history.append({"role": "user", "content": message})
         try:
+            # Preparar mensajes para el modelo combinando initial_prompt con el historial
+            messages_to_send = []
+            
+            # Si el primer mensaje es el resumen, combinarlo con initial_prompt
+            if self.conversation_history and self.conversation_history[0]["role"] == "system":
+                system_content = self.conversation_history[0]["content"]
+                # Combinar initial_prompt con el resumen almacenado
+                combined_content = f"{self.initial_prompt}. {system_content}"
+                messages_to_send.append({"role": "system", "content": combined_content})
+                # Agregar el resto del historial
+                messages_to_send.extend(self.conversation_history[1:])
+            else:
+                # Si no hay resumen, usar solo initial_prompt
+                messages_to_send.append({"role": "system", "content": self.initial_prompt})
+                messages_to_send.extend(self.conversation_history)
+            
             completion = self.client.chat.completions.create(
                 model=self.model,
-                messages=self.conversation_history
+                messages=messages_to_send
             )
             ai_response = completion.choices[0].message.content
 
@@ -99,19 +117,42 @@ class AI_Assistant():
         
     def perform_summarization(self, save: bool):
         try:
-            text = "Hazte un resumen mínimo de los aspectos más relevantes de la conversación que has mantenido actualmente y lo aprendido en conversaciones anteriores, con el fin de poder recordarlos más adelante."
-            text += f"\n\nEn conversaciones anteriores: {self.conversation_history[0]['content'].split(self.FIELDS_SEPARATOR)[1]}" if len(self.conversation_history[0]['content'].split(self.FIELDS_SEPARATOR)) >= 2 else ""
+            previous_summary = ""
+            if self.conversation_history and self.conversation_history[0]["role"] == "system":
+                parts = self.conversation_history[0]['content'].split(self.FIELDS_SEPARATOR)
+                if len(parts) >= 2:
+                    previous_summary = parts[1]
+
+            text = "Haz un resumen de los aspectos más relevantes de la conversación actual. " \
+                   "IMPORTANTE: Debes combinar este nuevo conocimiento con el resumen anterior (si existe), " \
+                   "asegurándote de MANTENER todos los puntos y recuerdos almacenados previamente, a menos que sean redundantes. " \
+                   "No debes olvidar los puntos importantes ya memorizados."
+            
+            if previous_summary:
+                text += f"\n\nResumen Anterior (NO OLVIDAR): {previous_summary}"
             self.conversation_history.append({"role": "user", "content": text})
+
+            # Preparar mensajes combinando initial_prompt con el historial
+            messages_to_send = []
+            if self.conversation_history and self.conversation_history[0]["role"] == "system":
+                system_content = self.conversation_history[0]["content"]
+                combined_content = f"{self.initial_prompt}. {system_content}"
+                messages_to_send.append({"role": "system", "content": combined_content})
+                messages_to_send.extend(self.conversation_history[1:])
+            else:
+                messages_to_send.append({"role": "system", "content": self.initial_prompt})
+                messages_to_send.extend(self.conversation_history)
 
             completion = self.client.chat.completions.create(
                 model=self.model,
-                messages=self.conversation_history
+                messages=messages_to_send
             )
             ai_response = completion.choices[0].message.content
 
             self.conversation_history.clear()
-            self.conversation_history.append({"role": "system", "content": f"{self.initial_prompt}. Aprendido en conversaciones anteriores:{self.FIELDS_SEPARATOR} {ai_response}"})
-            print(f"\n\n(System) {self.conversation_history[-1]['content']}\n\n")
+            # Solo guardamos el resumen, no el initial_prompt (ya lo tenemos como parámetro)
+            self.conversation_history.append({"role": "system", "content": f"Aprendido en conversaciones anteriores:{self.FIELDS_SEPARATOR} {ai_response}"})
+            print(f"\n\n(System) Resumen guardado: {ai_response}\n\n")
 
             if save:
                 self.save_status()
@@ -119,44 +160,64 @@ class AI_Assistant():
         except Exception as e:
             print(f"Error: {str(e)}")
             return None
+
+    def force_summarization(self):
+        '''
+        Forzar un resumen manual de la conversación.
+        '''
+        print("Forzando resumen manual...")
+        self.perform_summarization(self.auto_save)
+        self.summarization_counter = 0
         
     def load_status(self):
+        """Carga la personalidad desde MongoDB"""
+        if not self.memories_manager:
+            print("Error: MemoriesManager no está disponible")
+            return
+            
         try:
-            file_path = os.path.join(self.personalities_path, f"{self.personality_name}.her")
-            with open(file_path, "r") as File:
-                content = File.read()
+            content = self.memories_manager.load_personality(self.personality_name)
+            if content:
                 # Dividir por el separador principal
                 parts = content.split(self.FIELDS_SEPARATOR)
                 if len(parts) >= 2:
                     # El primer elemento es el rol (system)
                     role = parts[0]
                     # El segundo elemento es el contenido
-                    content = parts[1]
+                    content_text = parts[1]
                     # Si hay más partes, son parte del contenido
                     if len(parts) > 2:
-                        content += self.FIELDS_SEPARATOR + parts[2]
-                    self.conversation_history.append({"role": role, "content": content})
+                        content_text += self.FIELDS_SEPARATOR + parts[2]
+                    self.conversation_history.append({"role": role, "content": content_text})
+                    print(f"Personalidad cargada desde MongoDB: {self.personality_name}")
         except Exception as e:
-            print(f"Error al cargar el estado: {str(e)}")
+            print(f"Error al cargar desde MongoDB: {str(e)}")
         
     def save_status(self):
+        """Guarda la personalidad en MongoDB"""
+        if not self.memories_manager:
+            print("Error: MemoriesManager no está disponible")
+            return
+            
+        # Preparar el contenido a guardar
+        content = ""
+        for item in self.conversation_history:
+            content += f"{item['role']}{self.FIELDS_SEPARATOR}{item['content']}\n"
+        
+        # Guardar en MongoDB
         try:
-            if not os.path.exists(self.personalities_path):
-                os.makedirs(self.personalities_path)
-                
-            file_path = os.path.join(self.personalities_path, f"{self.personality_name}.her")
-            with open(file_path, "w") as File:
-                for item in self.conversation_history:
-                    File.write(f"{item['role']}{self.FIELDS_SEPARATOR}{item['content']}\n")
-                    
+            self.memories_manager.save_personality(self.personality_name, content)
+            print(f"Personalidad guardada en MongoDB: {self.personality_name}")
         except Exception as e:
-            print(f"Error al guardar el estado: {str(e)}")
+            print(f"Error al guardar en MongoDB: {str(e)}")
 
     def has_status(self) -> bool:
+        """Verifica si existe la personalidad en MongoDB"""
+        if not self.memories_manager:
+            return False
+            
         try:
-            file_path = os.path.join(self.personalities_path, f"{self.personality_name}.her")
-            with open(file_path, "r") as File:
-                pass
-            return True
+            return self.memories_manager.has_personality(self.personality_name)
         except Exception as e:
+            print(f"Error al verificar en MongoDB: {str(e)}")
             return False
