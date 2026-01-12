@@ -185,6 +185,7 @@ class AI_Assistant():
         '''
         print("Forzando resumen manual...")
         self.perform_assistant_summarization()
+        self.update_personality()
         
     def load_personality(self):
         """Carga la personalidad"""
