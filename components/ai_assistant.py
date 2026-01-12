@@ -118,9 +118,10 @@ class AI_Assistant():
                     #TODO: Add user summary and its history
                     pass
             else:
-                # Agregar el nuevo mensaje al historial de la personalidad (basado en el asistente y el usuario principal)
-                self.assistant_personality.latest_messages_history.append({"role": "user", "content": f"{message_author}: {message_content}", "timestamp": time.time()})
-                self.assistant_personality.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
+                if message_author == self.user_name:
+                    # Agregar el nuevo mensaje al historial de la personalidad (basado en el asistente y el usuario principal)
+                    self.assistant_personality.latest_messages_history.append({"role": "user", "content": f"{message_author}: {message_content}", "timestamp": time.time()})
+                    self.assistant_personality.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
 
             # Comprobar TTS del asistente, realizar resumen si es necesario y actualizar el estado del asistente
             self.assistant_personality.time_to_sleep -= 1
