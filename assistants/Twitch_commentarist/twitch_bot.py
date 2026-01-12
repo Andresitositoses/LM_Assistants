@@ -1,5 +1,5 @@
 # AI Assistant  
-from components.ai_assistant import AI_Assistant
+from components.ai_assistant import AI_Assistant, OPERATION_MODES
 # Twitch
 from twitchio import Message
 from twitchio.ext import commands
@@ -10,13 +10,12 @@ from components.kokoro.kokoro_class import Kokoro
 from configparser import ConfigParser
 import pathlib
 # OpenCV
-import cv2
-import numpy as np
 import os
-import random
 from threading import Thread
 # Memories Manager
 from assistants.Twitch_commentarist.memories_manager import MemoriesManager
+# Pictures Drawer
+from assistants.Twitch_commentarist.pictures_drawer import display_window
 
 # Get bot.py's father path
 path = pathlib.Path(__file__).parent.resolve().__str__()
@@ -49,17 +48,16 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         Tu nombre es {account_fields["personality_name"]} y tu propósito es responder a los comentarios de un directo de Twitch en español de España.
         Lo harás de manera humorística y con un tono sarcástico. Importante: no escribir NUNCA emotes ni caras.
         Por supuesto, deberás saludar a aquellos usuarios que se vayan incorporando y comentando por primera vez.
-        Tus respuestas no deben ser extensas.
-        Tu creador es {account_fields["channel_name"]} y le harás caso en todo lo que te pida, en caso de que comente algo en el chat.
+        Tus respuestas no deben ser extensas. Responde directamente, lo simules una conversación, ya que van a escuchar cada palabra que sueltes.
+        Tu creador es {account_fields["channel_name"]} y siempre le harás caso en todo lo que te pida.
         Si el usuario está tratando de spoilear algo del juego, repróchaselo burlándote de este.
         ''',
-        personalities_path=account_fields["personalities_path"],
+        user_name=account_fields["channel_name"],
         personality_name=account_fields["personality_name"],
-        summarization_frequency=int(account_fields["summarization_frequency"]),
-        auto_save=account_fields["auto_save"],
         lm_params=(base_url, api_key, model, is_local),
-        include_ai_in_history=True,
-        memories_manager=self.memories_manager)
+        conversation_window=int(account_fields["conversation_window"]),
+        memories_manager=self.memories_manager,
+        operation_mode=OPERATION_MODES["personal"])
         # Initialize Twitch bot
         commands.Bot.__init__(self, token=account_fields["access_token"],
                          prefix=account_fields["prefix"],
@@ -75,7 +73,7 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         self.image_directory = os.path.join(path, "img/Perfectas")
         
         # Iniciar el thread de visualización del rostro
-        self.display_thread = Thread(target=self._display_window)
+        self.display_thread = Thread(target=display_window, args=(self,))
         self.display_thread.daemon = True
         self.display_thread.start()
         self.audio_to_reproduce = (False, -1)
@@ -85,69 +83,6 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         self.audio_to_reproduce = (True, duration_seconds)
         self.reproduce_audio(audio_arrays)
         self.audio_to_reproduce = (False, -1)
-
-    def _display_window(self):
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.window_name, 1024, 1024)
-        current_image = None
-        last_state = False
-        
-        while True:
-            if self.audio_to_reproduce[0] and not last_state:
-                # Seleccionar nueva imagen aleatoria solo cuando comienza el audio
-                images = [f for f in os.listdir(self.image_directory) if f.endswith(('.png', '.jpg', '.jpeg'))]
-                if images:
-                    random_image = random.choice(images)
-                    try:
-                        current_image = cv2.imread(os.path.join(self.image_directory, random_image), cv2.IMREAD_UNCHANGED)
-                        # Si la imagen tiene canal alfa (transparencia)
-                        if current_image is not None and current_image.shape[-1] == 4:
-                            # Convertir a BGR eliminando la transparencia
-                            alpha_channel = current_image[:, :, 3]
-                            rgb_channels = current_image[:, :, :3]
-                            
-                            # Crear un fondo verde (BGR: 0,255,0)
-                            green_background = np.zeros_like(rgb_channels, dtype=np.uint8)
-                            green_background[:] = (0, 255, 0)
-                            
-                            # Crear máscara del canal alfa
-                            alpha_factor = alpha_channel[:, :, np.newaxis].astype(np.float32) / 255.0
-                            alpha_factor = np.concatenate((alpha_factor, alpha_factor, alpha_factor), axis=2)
-                            
-                            # Combinar imagen con fondo verde
-                            current_image = (rgb_channels.astype(np.float32) * alpha_factor + 
-                                          green_background.astype(np.float32) * (1 - alpha_factor))
-                            current_image = current_image.astype(np.uint8)
-                        
-                        if current_image is not None and current_image.size > 0:
-                            cv2.imshow(self.window_name, current_image)
-                        else:
-                            # Si hay error al cargar la imagen, mostrar pantalla verde
-                            green_screen = np.zeros((720, 1280, 3), dtype=np.uint8)
-                            green_screen[:] = (0, 255, 0)
-                            cv2.imshow(self.window_name, green_screen)
-                    except Exception as e:
-                        print(f"Error al cargar la imagen: {e}")
-                        green_screen = np.zeros((720, 1280, 3), dtype=np.uint8)
-                        green_screen[:] = (0, 255, 0)
-                        cv2.imshow(self.window_name, green_screen)
-            elif self.audio_to_reproduce[0] and last_state:
-                # Mantener la imagen actual si es válida
-                if current_image is not None and current_image.size > 0:
-                    cv2.imshow(self.window_name, current_image)
-                else:
-                    green_screen = np.zeros((720, 1280, 3), dtype=np.uint8)
-                    green_screen[:] = (0, 255, 0)
-                    cv2.imshow(self.window_name, green_screen)
-            else:
-                # Mostrar pantalla verde
-                green_screen = np.zeros((720, 1280, 3), dtype=np.uint8)
-                green_screen[:] = (0, 255, 0)
-                cv2.imshow(self.window_name, green_screen)
-            
-            last_state = self.audio_to_reproduce[0]
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
 
     async def event_message(self, message: Message):
         'Display messages on console'
@@ -160,7 +95,7 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
                 print("Resumen manual forzado por el líder.")
                 return
 
-            response = self.send_message(f"{message.author.name}: {message.content}")
+            response = self.send_message(message.author.name, message.content)
             print(f"IA: {response}")
             
             # Activar visualización de imagen durante el audio

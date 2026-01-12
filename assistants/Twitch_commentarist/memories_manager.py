@@ -6,63 +6,128 @@ class MemoriesManager:
         """Inicializa la conexión con MongoDB en localhost:27017"""
         self.client = MongoClient('localhost', 27017)
         self.db = self.client['twitch']
-        self.collection = self.db['memories']
+        self.memories_collection = self.db['memories']
         self.personalities_collection = self.db['personalities']
     
     def close(self):
         """Cierra la conexión con MongoDB"""
         self.client.close()
-    
-    # Métodos para gestionar personalidades
-    def has_personality(self, assistant_name: str) -> bool:
+
+    # Métodos para gestionar memorias
+    def has_memory(self, memory_name: str) -> bool:
         """
-        Verifica si existe un documento de personalidad en MongoDB
+        Verifica si existe un documento de memoria en MongoDB
         
         Args:
-            assistant_name: Nombre del asistente
+            memory_name: Nombre de la memoria
             
         Returns:
             True si existe el documento, False en caso contrario
         """
         try:
-            result = self.personalities_collection.find_one({"_id": assistant_name})
-            return result is not None
+            return self.memories_collection.find_one({"_id": memory_name}) is not None
+        except Exception as e:
+            print(f"Error al verificar memoria en MongoDB: {str(e)}")
+            return False
+    
+    def load_memory(self, memory_name: str):
+        """
+        Carga la memoria desde MongoDB
+        
+        Args:
+            memory_name: Nombre de la memoria
+            
+        Returns:
+            Documento de memoria
+        """
+        try:
+            return self.memories_collection.find_one({"_id": memory_name})
+        except Exception as e:
+            print(f"Error al cargar memoria desde MongoDB: {str(e)}")
+            return None
+    
+    def save_memory(self, memory_name: str, memory_content: str):
+        """
+        Guarda o actualiza la memoria en MongoDB
+        
+        Args:
+            memory_name: Nombre de la memoria
+            memory_content: Contenido de la memoria
+        """
+        try:
+            self.memories_collection.update_one(
+                {"_id": memory_name},
+                {"$set": {"content": memory_content}},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"Error al guardar memoria en MongoDB: {str(e)}")
+    
+    # Métodos para gestionar personalidades
+    def has_personality(self, personality_name: str) -> bool:
+        """
+        Verifica si existe un documento de personalidad en MongoDB
+        
+        Args:
+            personality_name: Nombre de la personalidad
+            
+        Returns:
+            True si existe el documento, False en caso contrario
+        """
+        try:
+            return self.personalities_collection.find_one({"_id": personality_name}) is not None
         except Exception as e:
             print(f"Error al verificar personalidad en MongoDB: {str(e)}")
             return False
     
-    def load_personality(self, assistant_name: str) -> str:
+    def load_personality(self, personality_name: str):
         """
         Carga la personalidad desde MongoDB
         
         Args:
-            assistant_name: Nombre del asistente
+            personality_name: Nombre de la personalidad
             
         Returns:
-            Contenido de la personalidad o None si no existe
+            Documento de personalidad
         """
         try:
-            result = self.personalities_collection.find_one({"_id": assistant_name})
-            if result and "content" in result:
-                return result["content"]
-            return None
+            return self.personalities_collection.find_one({"_id": personality_name})
         except Exception as e:
             print(f"Error al cargar personalidad desde MongoDB: {str(e)}")
             return None
     
-    def save_personality(self, assistant_name: str, content: str):
+    def save_personality(self, personality_name: str, personality_history: list, personality_summary: str, personality_tts: int):
         """
         Guarda o actualiza la personalidad en MongoDB
         
         Args:
-            assistant_name: Nombre del asistente
-            content: Contenido de la personalidad a guardar
+            personality_name: Nombre de la personalidad
+            personality_history: Historial de la personalidad
+            personality_summary: Resumen de la personalidad
+            personality_tts: Tiempo de espera entre respuestas de la personalidad
         """
         try:
             self.personalities_collection.update_one(
-                {"_id": assistant_name},
-                {"$set": {"content": content}},
+                {"_id": personality_name},
+                {"$set": {"latest_messages_history": personality_history, "summary": personality_summary, "time_to_sleep": personality_tts}},
                 upsert=True
             )
         except Exception as e:
             print(f"Error al guardar personalidad en MongoDB: {str(e)}")
+
+    def create_personality(self, personality_name: str, personality_history: list, personality_summary: str, personality_tts: int):
+        """
+        Crea una nueva personalidad en MongoDB
+        
+        Args:
+            personality_name: Nombre de la personalidad
+            personality_history: Historial de la personalidad
+            personality_summary: Resumen de la personalidad
+            personality_tts: Tiempo de espera entre respuestas de la personalidad
+        """
+        try:
+            self.personalities_collection.insert_one(
+                {"_id": personality_name, "latest_messages_history": personality_history, "summary": personality_summary, "time_to_sleep": personality_tts}
+            )
+        except Exception as e:
+            print(f"Error al crear personalidad en MongoDB: {str(e)}")

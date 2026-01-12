@@ -40,10 +40,8 @@ class LanguageModelSettings:
 @dataclass
 class AssistantSettings:
     initial_prompt: str
-    personalities_path: str
     personality_name: str
     summarization_frequency: int
-    auto_save: bool
 
 
 @dataclass
@@ -117,24 +115,19 @@ class CentralUnitConfig:
 
     def _load_assistant_settings(self) -> AssistantSettings:
         section = self._central_section
-        personalities_path = section.get("personalities_path", fallback=None)
         personality_name = section.get("personality_name", fallback=None)
 
         # Fallback a configuración de Twitch si existe
-        if (not personalities_path or not personality_name) and self._parser.has_section("TWITCH_COMMENTARIST_CONFIG"):
+        if (not personality_name) and self._parser.has_section("TWITCH_COMMENTARIST_CONFIG"):
             twitch_section = self._parser["TWITCH_COMMENTARIST_CONFIG"]
-            personalities_path = personalities_path or twitch_section.get("personalities_path", fallback=str(Path.home() / "Her"))
             personality_name = personality_name or twitch_section.get("personality_name", fallback="default")
 
-        personalities_path = personalities_path or str(Path.home() / "Her")
         personality_name = personality_name or "default"
 
         return AssistantSettings(
             initial_prompt=section.get("initial_prompt", fallback=self.DEFAULT_PROMPT).strip(),
-            personalities_path=personalities_path,
             personality_name=personality_name,
-            summarization_frequency=section.getint("summarization_frequency", fallback=10),
-            auto_save=section.getboolean("auto_save", fallback=True),
+            summarization_frequency=section.getint("summarization_frequency", fallback=10)
         )
 
     def _load_voice_settings(self) -> VoiceSettings:
@@ -296,10 +289,8 @@ class CentralUnit:
 
         self.assistant = AI_Assistant(
             initial_prompt=enriched_prompt,
-            personalities_path=config.assistant.personalities_path,
             personality_name=config.assistant.personality_name,
             summarization_frequency=config.assistant.summarization_frequency,
-            auto_save=config.assistant.auto_save,
             lm_params=(config.lm.base_url, config.lm.api_key, config.lm.model, config.lm.is_local),
         )
 
