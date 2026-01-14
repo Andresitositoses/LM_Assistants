@@ -95,11 +95,13 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
                 print("Resumen manual forzado por el líder.")
                 return
 
-            response = self.send_message(message.author.name, message.content)
+            has_response, response = self.send_message(message.author.name, message.content)
+            if not has_response:
+                return
             print(f"IA: {response}")
             
             # Activar visualización de imagen durante el audio
-            audio_arrays, duration_seconds = self.generate_audio(response)
+            audio_arrays, duration_seconds = self.generate_audio(response.replace("*", ""))
             self.audio_to_reproduce = (True, duration_seconds)
             self.reproduce_audio(audio_arrays)
             self.audio_to_reproduce = (False, -1)

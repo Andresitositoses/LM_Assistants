@@ -72,7 +72,7 @@ class AI_Assistant():
         if not is_local and not api_key:
             return "api_key es requerido para modelos en la nube"
         return None
-
+        
     def send_message(self, message_author, message_content):
         '''
         Add a message to the conversation history and its response.
@@ -116,17 +116,39 @@ class AI_Assistant():
                 messages_to_send.extend([{'role': m['role'], 'content': m['content']} for m in combined_history])
             messages_to_send.append({"role": "user", "content": f"{message_author}: {message_content}"}) # New message
             
+            # Specify the format of the response
+            request_format_specification = """
+            Analiza la solicitud y decide si se debe responder al último mensaje o no, basándote en los siguientes criterios:
+            
+            Criterios para responder (hay_respuesta: True):
+            1. El mensaje no es spam, un comando o un emote.
+            2. El mensaje es relevante al contexto del chat y se va a aportar algún comentario gracioso.
+            3. El mensaje es en respuesta a otro usuario y hay algo que aportar.
+
+            Formato de respuesta obligatorio:
+            *Ejemplo: True/False&&&Contenido de la respuesta/Texto 'No cumple con el criterio N'
+            """
+            messages_to_send.append({"role": "system", "content": request_format_specification})
+
             # Send messages to the model
             completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages_to_send
             )
             ai_response = completion.choices[0].message.content
+            is_there_response = False
+            if ai_response and "&&&" in ai_response:
+                is_there_response = ai_response.split("&&&", 1)[0].strip() == "True"
+                ai_response = ai_response.split("&&&", 1)[1].strip()
+            else:
+                return False, None
+
             if ai_response and ":" in ai_response:
                 ai_response = ai_response.split(":", 1)[1].strip()
 
             # Add assistant response to conversation history
-            self.conversation_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
+            if is_there_response:
+                self.conversation_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
 
             # Update messages histories
             if self.operation_mode == OPERATION_MODES["group"]:
@@ -134,23 +156,27 @@ class AI_Assistant():
                 if message_author == self.user_name:
                     # Agregar el nuevo mensaje al historial de la personalidad (basado en el asistente y el usuario principal)
                     self.assistant_personality.latest_messages_history.append({"role": "user", "content": f"{message_author}: {message_content}", "timestamp": time.time()})
-                    self.assistant_personality.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
+                    if is_there_response:
+                        self.assistant_personality.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
                 else:
                     # Agregar los nuevos mensajes al historial del usuario
                     user_memory = self.load_user_memory(message_author)
                     user_memory.latest_messages_history.append({"role": "user", "content": f"{message_author}: {message_content}", "timestamp": time.time()})
-                    user_memory.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
+                    if is_there_response:
+                        user_memory.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
                     self.update_user_memory(user_memory)
             else:
                 if message_author == self.user_name:
                     # Agregar el nuevo mensaje al historial de la personalidad (basado en el asistente y el usuario principal)
                     self.assistant_personality.latest_messages_history.append({"role": "user", "content": f"{message_author}: {message_content}", "timestamp": time.time()})
-                    self.assistant_personality.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
+                    if is_there_response:
+                        self.assistant_personality.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
 
             # Comprobar TTS del asistente, realizar resumen si es necesario y actualizar el estado del asistente
-            self.assistant_personality.time_to_sleep -= 1
-            if self.is_time_to_summarize():
-                self.perform_assistant_summarization()
+            if is_there_response:
+                self.assistant_personality.time_to_sleep -= 1
+                if self.is_time_to_summarize():
+                    self.perform_assistant_summarization()
             self.update_personality()
 
             # Si procede, actualizar la memoria del usuario
@@ -165,11 +191,11 @@ class AI_Assistant():
             self.conversation_history = self.conversation_history[-self.conversation_window:]
 
             # Suprimimos el autor del mensaje
-            return ai_response
+            return is_there_response, ai_response
             
         except Exception as e:
             print(f"Error: {str(e)}")
-            return None
+            return False, None
 
     def user_has_to_summarize(self, user: UserMemory):
         return user.time_to_sleep == 0
@@ -194,6 +220,7 @@ class AI_Assistant():
                 messages=messages_to_send
             )
             user.summary = completion.choices[0].message.content
+            user.latest_messages_history = []
             user.time_to_sleep = self.conversation_window
         except Exception as e:
             print(f"Error: {str(e)}")
