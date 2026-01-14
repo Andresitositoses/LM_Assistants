@@ -57,7 +57,7 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         lm_params=(base_url, api_key, model, is_local),
         conversation_window=int(account_fields["conversation_window"]),
         memories_manager=self.memories_manager,
-        operation_mode=OPERATION_MODES["personal"])
+        operation_mode=OPERATION_MODES["group"])
         # Initialize Twitch bot
         commands.Bot.__init__(self, token=account_fields["access_token"],
                          prefix=account_fields["prefix"],

@@ -13,6 +13,13 @@ class AssistantPersonality:
         self.latest_messages_history = latest_messages_history
         self.time_to_sleep = time_to_sleep # Remaining iterations before performing a summarization
 
+class UserMemory:
+    def __init__(self, name: str, summary: str, latest_messages_history: list, time_to_sleep: int):
+        self.name = name
+        self.summary = summary
+        self.latest_messages_history = latest_messages_history
+        self.time_to_sleep = time_to_sleep
+
 class AI_Assistant():
 
     def __init__(self, initial_prompt: str, user_name:str, personality_name:str, lm_params: tuple, conversation_window = 10, memories_manager = None, operation_mode = OPERATION_MODES["personal"]):
@@ -83,9 +90,23 @@ class AI_Assistant():
             messages_to_send = []
             messages_to_send.append({"role": "system", "content": self.initial_prompt}) # Initial prompt
             messages_to_send.append({"role": "system", "content": self.assistant_personality.summary}) # Assistant summary
+            combined_history = []
             if self.operation_mode == OPERATION_MODES["group"] and message_author != self.user_name:
-                #TODO: Add user summary and its history (and the global conversation history)
-                pass
+                is_new_user = False
+                if not self.is_existing_user(message_author): # If the memory doesn't exist, create it
+                    self.create_user_memory(message_author)
+                    is_new_user = True
+                user_memory = self.load_user_memory(message_author)
+                # User summary and history (both global chat and user memory)
+                if is_new_user:
+                    messages_to_send.append({"role": "system", "content": f"El usuario '{message_author}' se ha unido al chat por primera vez.\n\n"})
+                else:
+                    messages_to_send.append({"role": "system", "content": f"Resumen del usuario {message_author}: {user_memory.summary}\n\n"})
+                combined_history = sorted(
+                    self.conversation_history[:-1] + (user_memory.latest_messages_history if user_memory else []),
+                    key=lambda x: x.get('timestamp', 0)
+                )
+                messages_to_send.extend([{'role': m['role'], 'content': m['content']} for m in combined_history])
             else:
                 # Combinar historial global con el historial de la personalidad
                 combined_history = sorted(
@@ -115,8 +136,11 @@ class AI_Assistant():
                     self.assistant_personality.latest_messages_history.append({"role": "user", "content": f"{message_author}: {message_content}", "timestamp": time.time()})
                     self.assistant_personality.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
                 else:
-                    #TODO: Add user summary and its history
-                    pass
+                    # Agregar los nuevos mensajes al historial del usuario
+                    user_memory = self.load_user_memory(message_author)
+                    user_memory.latest_messages_history.append({"role": "user", "content": f"{message_author}: {message_content}", "timestamp": time.time()})
+                    user_memory.latest_messages_history.append({"role": "assistant", "content": f"{self.assistant_personality.name}: {ai_response}", "timestamp": time.time()})
+                    self.update_user_memory(user_memory)
             else:
                 if message_author == self.user_name:
                     # Agregar el nuevo mensaje al historial de la personalidad (basado en el asistente y el usuario principal)
@@ -131,8 +155,11 @@ class AI_Assistant():
 
             # Si procede, actualizar la memoria del usuario
             if self.operation_mode == OPERATION_MODES["group"] and message_author != self.user_name:
-                #TODO: Update user memory
-                pass
+                user_memory = self.load_user_memory(message_author)
+                user_memory.time_to_sleep -= 1
+                if self.user_has_to_summarize(user_memory):
+                    self.perform_user_memory_summarization(user_memory, combined_history)
+                self.update_user_memory(user_memory)
 
             # Limpiar por la cola el historial de conversación (Dejamos solo los últimos <conversation_window> mensajes)
             self.conversation_history = self.conversation_history[-self.conversation_window:]
@@ -143,6 +170,89 @@ class AI_Assistant():
         except Exception as e:
             print(f"Error: {str(e)}")
             return None
+
+    def user_has_to_summarize(self, user: UserMemory):
+        return user.time_to_sleep == 0
+
+    def perform_user_memory_summarization(self, user: UserMemory, combined_history: list):
+        try:
+            summarization_request = f'''
+            Hazte un resumen de los aspectos más relevantes de la conversación actual con este usuario, hablándote a ti misma. 
+            Asegúrate de MANTENER todos los puntos y recuerdos almacenados previamente, a menos que sean redundantes o irrelevantes.
+            '''
+            summarization_request += f"IMPORTANTE: Debes combinar este nuevo conocimiento con el resumen anterior: {user.summary}\n\n" if user.summary else "\n\n"
+            summarization_request += f"Conversación:\n{"\n".join(msg['content'] for msg in combined_history)}\n\n"
+            
+            # Preparar mensajes combinando la identidad del asistente, la del usuario, el historial de mensaje (chat y usuario) y la petición de resumen
+            messages_to_send = []
+            messages_to_send.append({"role": "system", "content": self.initial_prompt}) # Initial prompt
+            messages_to_send.append({"role": "system", "content": self.assistant_personality.summary}) # Assistant summary
+            messages_to_send.append({"role": "user", "content": summarization_request}) # Summarization request
+
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages_to_send
+            )
+            user.summary = completion.choices[0].message.content
+            user.time_to_sleep = self.conversation_window
+        except Exception as e:
+            print(f"Error: {str(e)}")
+
+    def load_user_memory(self, user_name: str):
+        "Carga la memoria del usuario"
+        if not self.memories_manager:
+            print("Error: MemoriesManager no está disponible")
+            return
+            
+        try:
+            user_memory = self.memories_manager.load_memory(user_name)
+            if user_memory:
+                return UserMemory(user_name, user_memory["summary"], user_memory["latest_messages_history"], user_memory["time_to_sleep"])
+            else:
+                return None
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            return None
+
+    def update_user_memory(self, user_memory: UserMemory):
+        """Guarda la memoria del usuario"""
+        if not self.memories_manager:
+            print("Error: MemoriesManager no está disponible")
+            return
+            
+        try:
+            self.memories_manager.save_memory(user_memory.name, user_memory.summary, user_memory.latest_messages_history, user_memory.time_to_sleep)
+            print(f"Memoria guardada: {user_memory.name}")
+        except Exception as e:
+            print(f"Error al guardar: {str(e)}")
+
+    def is_existing_user(self, user_name: str):
+        '''
+        Verifica si existe la memoria del usuario
+        '''
+        if not self.memories_manager:
+            print("Error: MemoriesManager no está disponible")
+            return False
+        
+        try:
+            return self.memories_manager.has_memory(user_name)
+        except Exception as e:
+            print(f"Error al verificar: {str(e)}")
+            return False
+
+    def create_user_memory(self, user_name: str):
+        '''
+        Crea la memoria del usuario
+        '''
+        if not self.memories_manager:
+            print("Error: MemoriesManager no está disponible")
+            return
+        
+        try:
+            self.memories_manager.create_memory(user_name, self.conversation_window)
+            print(f"Memoria creada: {user_name}")
+        except Exception as e:
+            print(f"Error al crear: {str(e)}")
 
     def is_time_to_summarize(self):
         return self.assistant_personality.time_to_sleep == 0
@@ -160,7 +270,7 @@ class AI_Assistant():
             messages_to_send = []
             messages_to_send.append({"role": "system", "content": self.initial_prompt}) # Initial prompt
             messages_to_send.append({"role": "system", "content": self.assistant_personality.summary}) # Assistant summary
-            messages_to_send.append({"role": "user", "content": summarization_request}) # Assistant summary
+            messages_to_send.append({"role": "user", "content": summarization_request}) # Summarization request
 
             # Send messages to the model
             completion = self.client.chat.completions.create(
@@ -235,7 +345,7 @@ class AI_Assistant():
             return
             
         try:
-            self.memories_manager.create_personality(self.personality_name)
+            self.memories_manager.create_personality(self.personality_name, self.conversation_window)
             print(f"Personalidad creada: {self.personality_name}")
         except Exception as e:
             print(f"Error al crear: {str(e)}")
