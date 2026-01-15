@@ -16,6 +16,8 @@ from threading import Thread
 from assistants.Twitch_commentarist.memories_manager import MemoriesManager
 # Pictures Drawer
 from assistants.Twitch_commentarist.pictures_drawer import display_window
+# Keyboard control
+import keyboard
 
 # Get bot.py's father path
 path = pathlib.Path(__file__).parent.resolve().__str__()
@@ -84,6 +86,11 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         self.reproduce_audio(audio_arrays)
         self.audio_to_reproduce = (False, -1)
 
+        # Estado de silencio y hotkeys
+        self.is_muted = False
+        keyboard.add_hotkey('ctrl+m', self.mute_assistant)
+        keyboard.add_hotkey('ctrl+u', self.unmute_assistant)
+
     async def event_message(self, message: Message):
         'Display messages on console'
         try:
@@ -93,6 +100,10 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
             if message.author and message.author.name.lower() == account_fields["channel_name"].lower() and message.content.strip() == "r":
                 self.force_summarization()
                 print("Resumen manual forzado por el líder.")
+                return
+
+            # Si el asistente está silenciado, no procesar nada
+            if self.is_muted:
                 return
 
             has_response, response = self.send_message(message.author.name, message.content)
@@ -109,6 +120,15 @@ class TwitchCommentarist(AI_Assistant, commands.Bot, Kokoro):
         except:
             pass
         await super().event_message(message)
+
+    def mute_assistant(self):
+        self.is_muted = True
+        self.stop_playback()
+        print(">> Asistente SILENCIADO (Ctrl+M)")
+
+    def unmute_assistant(self):
+        self.is_muted = False
+        print(">> Asistente ACTIVADO (Ctrl+U)")
 
     @commands.command()
     async def changevoice(self, ctx: commands.Context):
